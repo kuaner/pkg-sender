@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>PKG Sender</string>
+    <key>CFBundleDisplayName</key>
+    <string>PKG Sender</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.loopayeh.pkgsender</string>
+    <key>CFBundleVersion</key>
+    <string>@VERSION@</string>
+    <key>CFBundleShortVersionString</key>
+    <string>@VERSION@</string>
+    <key>CFBundleExecutable</key>
+    <string>PkgSender</string>
+    <key>CFBundleIconFile</key>
+    <string>PkgSender</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>12.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>PKG Sender finds your PS4/PS5 on the LAN and serves game files to it.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>PKG Sender scans this folder for PS4/PS5 game packages.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>PKG Sender scans this folder for PS4/PS5 game packages.</string>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>PKG Sender scans this folder for PS4/PS5 game packages.</string>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>PKG Sender scans USB disks for PS4/PS5 game packages.</string>
+</dict>
+</plist>

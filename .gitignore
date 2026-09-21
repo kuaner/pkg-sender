@@ -11,6 +11,8 @@ test-pkgs/
 payload/*.elf
 # installer output (built locally per release)
 PkgSender-Setup-*.exe
+PkgSender-macOS-*.zip
+.DS_Store
 # IDE
 .vs/
 *.user
