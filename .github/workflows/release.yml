@@ -1,0 +1,160 @@
+# Mac packaging overlay. Windows installer.iss is patched only on the runner
+# so this fork can stay a clean rebase of upstream.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, without v (e.g. 1.2.6)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark GitHub Release as pre-release"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set.outputs.version }}
+      tag: ${{ steps.set.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          raw="${INPUT_VERSION#v}"
+          if ! echo "$raw" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-].*)?$'; then
+            echo "Bad version: '$raw'" >&2
+            exit 1
+          fi
+          echo "version=$raw" >> "$GITHUB_OUTPUT"
+          echo "tag=v$raw" >> "$GITHUB_OUTPUT"
+          echo "Publishing $raw from ${GITHUB_SHA} (${GITHUB_REF_NAME})"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: elf
+          path: payload/pkg-receiver.elf
+          if-no-files-found: warn
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Publish win-x64
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          $ver = $env:APP_VERSION
+          dotnet publish library/PkgSender.csproj -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true `
+            -p:IncludeNativeLibrariesForSelfExtract=true `
+            -p:DebugType=None `
+            -p:Version=$ver `
+            -o dist --nologo
+          if (Test-Path payload/pkg-receiver.elf) {
+            Copy-Item payload/pkg-receiver.elf dist/pkg-receiver.elf
+          }
+          if (Test-Path pkgviewer.py) {
+            Copy-Item pkgviewer.py dist/pkgviewer.py
+          }
+      - name: Point installer.iss at this checkout
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          $ver = $env:APP_VERSION
+          $iss = Get-Content installer.iss -Raw
+          $iss = $iss -replace '#define AppVer "[^"]*"', "#define AppVer `"$ver`""
+          $iss = $iss -replace 'OutputDir=.*', 'OutputDir=.'
+          $iss = $iss -replace 'SetupIconFile=.*logo\.ico', 'SetupIconFile=library\Assets\logo.ico'
+          $iss = $iss -replace 'Source: "[^"]*dist\\\*"', 'Source: "dist\*"'
+          Set-Content -Path installer.iss -Value $iss -NoNewline
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = "ISCC.exe" }
+          & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-Item "PkgSender-Setup-${{ needs.version.outputs.version }}.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-setup
+          path: PkgSender-Setup-*.exe
+          if-no-files-found: error
+
+  macos:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build ${{ matrix.arch }} app
+        env:
+          APP_VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          chmod +x Build-Mac.sh
+          ./Build-Mac.sh ${{ matrix.arch }}
+          ls -lh dist/PkgSender-macOS-${{ matrix.arch }}-*.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: dist/PkgSender-macOS-*.zip
+          if-no-files-found: error
+
+  release:
+    needs: [version, windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: List artifacts
+        run: find artifacts -type f -ls
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: ${{ needs.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          prerelease: ${{ inputs.prerelease }}
+          fail_on_unmatched_files: true
+          body: |
+            ### Downloads
+            - **Windows:** `PkgSender-Setup-${{ needs.version.outputs.version }}.exe`
+            - **macOS Apple Silicon:** `PkgSender-macOS-arm64-${{ needs.version.outputs.version }}.zip`
+            - **macOS Intel:** `PkgSender-macOS-x64-${{ needs.version.outputs.version }}.zip`
+            - **PS5 receiver:** `pkg-receiver.elf`
+
+            First Mac launch: right-click **PkgSender.app** → Open, or `xattr -cr /Applications/PkgSender.app`
+          files: |
+            artifacts/windows-setup/PkgSender-Setup-*.exe
+            artifacts/macos-arm64/PkgSender-macOS-*.zip
+            artifacts/macos-x64/PkgSender-macOS-*.zip
+            artifacts/elf/pkg-receiver.elf
