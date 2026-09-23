@@ -43,6 +43,19 @@ jobs:
           echo "version=$raw" >> "$GITHUB_OUTPUT"
           echo "tag=v$raw" >> "$GITHUB_OUTPUT"
           echo "Publishing $raw from ${GITHUB_SHA} (${GITHUB_REF_NAME})"
+      - name: Reject a non-ELF receiver
+        run: |
+          set -euo pipefail
+          python3 - << 'PY'
+          from pathlib import Path
+          p = Path("payload/pkg-receiver.elf")
+          b = p.read_bytes()
+          if b[:4] != b"\x7fELF":
+              raise SystemExit(f"{p} is not an ELF (starts {b[:4]!r}, {len(b)} bytes). Refusing to publish it.")
+          if len(b) > 300_000:
+              raise SystemExit(f"{p} is {len(b)} bytes; a stripped receiver is about 210KB.")
+          print(f"receiver ok: {len(b)} bytes")
+          PY
       - uses: actions/upload-artifact@v4
         with:
           name: elf
